@@ -1,7 +1,8 @@
 {
   "profiles": {
     "FactorioModTool": {
-      "commandName": "Project"
+      "commandName": "Project",
+      "commandLineArgs": "--download Krastorio2"
     }
   }
 }
