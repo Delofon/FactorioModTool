@@ -2,7 +2,7 @@
   "profiles": {
     "FactorioModTool": {
       "commandName": "Project",
-      "commandLineArgs": "--download Krastorio2"
+      "commandLineArgs": "--download 015AdvancedRadar --download Krasto --download Krastorio2 --download"
     }
   }
 }

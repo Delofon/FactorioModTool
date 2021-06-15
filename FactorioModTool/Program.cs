@@ -38,7 +38,7 @@ namespace FactorioModTool
         public string[] toDisable; // Contains IDs of mods to be disabled.
         public string[] toRemove; // Contains IDs of mods to be removed.
 
-        public string[] toDownload; // Contains URIs to mod portal pages of mods to download.
+        public string[] toDownload; // Contains IDs of mods to download.
 
         public bool runSetupTool; // Specifies if setup run should be run.
 
@@ -69,7 +69,7 @@ namespace FactorioModTool
 
     class Program
     {
-        static string[] modIds;
+        static List<string> modIds;
         static Settings settings;
         static ArgsContainer parsedArgs;
         static ServiceCrdntls crdntls;
@@ -92,9 +92,14 @@ namespace FactorioModTool
             {
                 settings = FileHelper.ReadSettings();
 
-                crdntls = GetCrdntls();
-
-                settings.modsPath = settings.readWritePath.TrimEnd("player-data.json".ToCharArray()) + "mods";
+                try
+                {
+                    settings.modsPath = settings.readWritePath.TrimEnd("player-data.json".ToCharArray()) + "mods";
+                }
+                catch(NullReferenceException e)
+                {
+                    ConsoleHelper.ThrowError(ErrorType.NoPath, "readWritePath", skip: false);
+                }
                 modIds = FetchIds(settings);
 
                 if (parsedArgs.toRemove.Length != 0)
@@ -103,6 +108,7 @@ namespace FactorioModTool
                 }
                 if (parsedArgs.toDownload.Length != 0)
                 {
+                    crdntls = GetCrdntls();
                     Download();
                 }
                 if (parsedArgs.toDisable.Length != 0)
@@ -115,6 +121,8 @@ namespace FactorioModTool
                 }
 
                 Console.WriteLine($"Done with {EndStats.errorsRecorded} errors.");
+                parsedArgs.toDownload.ToList().ForEach(x => Console.WriteLine(x));
+                //if (EndStats.errorsRecorded != 0) Console.Write("Error codes: "); EndStats.errorCodes.ToList().ForEach(x => Console.Write($"{x} ")); Console.Write('\n');
             }
         }
         
@@ -134,72 +142,107 @@ namespace FactorioModTool
             {
                 foreach (string mod_download in toDownload)
                 {
-                    Console.WriteLine($"Downloading mod {mod_download}...");
+                    string modid = mod_download;
+                    if (modid.StartsWith("https://mods.factorio.com/mod/"))
+                        modid = modid.TrimStart("https://mods.factorio.com/mod/".ToCharArray());
 
-                    if (modIds.Contains(mod_download))
-                    {
-                        ConsoleHelper.ThrowError(ErrorType.LocalModExists, mod_download);
-                        continue;
-                    }
-
-                    WebRequest request = WebRequest.Create($"https://mods.factorio.com/api/mods/{mod_download}/full");
-                    WebResponse response = request.GetResponse();
-
-                    JsonDocument api_json = JsonDocument.Parse(response.GetResponseStream());
-
-                    response.Close();
-
-                    try
-                    {
-                        if (api_json.RootElement.GetProperty("message").GetString() == "Mod not found")
-                        {
-                            ConsoleHelper.ThrowError(ErrorType.NoSuchMod, mod_download);
-                            continue;
-                        }
-                    } catch { }
-
-                    JsonElement release_to_download = api_json.RootElement.GetProperty("releases").EnumerateArray().Last();
-
-                    string download_url = release_to_download.GetProperty("download_url").GetString();
-                    string zip_name = settings.modsPath + "/" + release_to_download.GetProperty("file_name").GetString();
-
-                    ManualResetEvent ma = new ManualResetEvent(false);
-
-                    long prevBytes = 0;
-                    int prevPercentage = 0;
-
-                    wc.DownloadProgressChanged += ProgressChanged;
-                    wc.DownloadFileCompleted += DownloadCompleted;
-                    ma.Reset();
-                    wc.DownloadFileAsync(new Uri($"https://mods.factorio.com/{download_url}?username={crdntls.username}&token={crdntls.token}"), zip_name);
-                    ma.WaitOne();
-
-                    void ProgressChanged(object sender, DownloadProgressChangedEventArgs args)
-                    {
-                        long curBytes = args.BytesReceived;
-                        int curPercentage = args.ProgressPercentage;
-
-                        if(prevBytes/1024/1024 != curBytes/1024/1024 || curPercentage != prevPercentage)
-                        {
-                            Console.WriteLine($"Downloaded {args.BytesReceived / 1024 / 1024} MB / {args.TotalBytesToReceive / 1024 / 1024}; {args.ProgressPercentage}%");
-                        }
-
-                        prevBytes = curBytes;
-                        prevPercentage = curPercentage;
-                    }
-
-                    void DownloadCompleted(object sender, AsyncCompletedEventArgs e)
-                    {
-                        ma.Set();
-                    }
-
-                    Console.WriteLine($"Finished downloading {mod_download}, {prevBytes/1024/1024} MB.");
+                    DownloadMod(modid, wc);
                 }
             }
         }
         static void Remove()
         {
+            string[] toRemove = parsedArgs.toRemove;
 
+            foreach(string mod_remove in toRemove)
+            {
+                Console.WriteLine($"Removing mod {mod_remove}...");
+
+                if(!modIds.Contains(mod_remove))
+                {
+                    ConsoleHelper.ThrowError(ErrorType.LocalModDoesNotExist, mod_remove);
+                    continue;
+                }
+
+                //File.de
+
+                modIds.Remove(mod_remove);
+            }
+        }
+
+        static void DownloadMod(string mod_download, WebClient wc)
+        {
+            Console.WriteLine($"Downloading mod {mod_download}...");
+
+            if(crdntls.username == "" || crdntls.token == "")
+            {
+                ConsoleHelper.ThrowError(ErrorType.NoService);
+                return;
+            }
+
+            if (modIds.Contains(mod_download))
+            {
+                ConsoleHelper.ThrowError(ErrorType.LocalModExists, mod_download);
+                return;
+            }
+
+            WebRequest request = WebRequest.Create($"https://mods.factorio.com/api/mods/{mod_download}/full");
+            WebResponse response;
+
+            try
+            {
+                response = request.GetResponse();
+            }
+            catch (WebException e)
+            {
+                ConsoleHelper.ThrowError(ErrorType.NoSuchMod, mod_download);
+                return;
+            }
+
+            JsonDocument api_json = JsonDocument.Parse(response.GetResponseStream());
+
+            response.Close();
+
+            JsonElement release_to_download = api_json.RootElement.GetProperty("releases").EnumerateArray().Last();
+
+            string download_url = release_to_download.GetProperty("download_url").GetString();
+            string zip_name = settings.modsPath + "/" + release_to_download.GetProperty("file_name").GetString();
+
+            ManualResetEvent ma = new ManualResetEvent(false);
+
+            long prevBytes = -1;
+
+            wc.DownloadProgressChanged += ProgressChanged;
+            wc.DownloadFileCompleted += DownloadCompleted;
+            ma.Reset();
+            wc.DownloadFileAsync(new Uri($"https://mods.factorio.com/{download_url}?username={crdntls.username}&token={crdntls.token}"), zip_name);
+            ma.WaitOne();
+
+            void ProgressChanged(object sender, DownloadProgressChangedEventArgs args)
+            {
+                long curBytes = args.BytesReceived;
+                int curPercentage = args.ProgressPercentage;
+
+                if (prevBytes / 1024 / 1024 != curBytes / 1024 / 1024)
+                {
+                    Console.WriteLine($"Downloaded {args.BytesReceived / 1024 / 1024} MB / {args.TotalBytesToReceive / 1024 / 1024} MB; {args.ProgressPercentage}%");
+                }
+
+                prevBytes = curBytes;
+            }
+
+            void DownloadCompleted(object sender, AsyncCompletedEventArgs e)
+            {
+                ma.Set();
+            }
+
+            Console.WriteLine($"Finished downloading {mod_download}, {prevBytes / 1024 / 1024} MB.");
+        }
+        
+        static void DownloadMod(string mod_download)
+        {
+            using(WebClient wc = new WebClient())
+                DownloadMod(mod_download, wc);
         }
 
         static ServiceCrdntls GetCrdntls()
@@ -216,12 +259,12 @@ namespace FactorioModTool
             }
             catch(KeyNotFoundException e)
             {
-                ConsoleHelper.ThrowError(ErrorType.NoService, skip: false, exitCode: 8316);
+                ConsoleHelper.ThrowError(ErrorType.NoService, skip: false);
                 return new ServiceCrdntls();
             }
         }
 
-        // Parses args, return number of args parsed and whole container of juicy args stuff.
+        // Parses args, return whole container of juicy args stuff.
         // (See ArgsContainer struct for more info)
         static ArgsContainer ParseArgs(string[] args)
         {
@@ -270,9 +313,9 @@ namespace FactorioModTool
                         case "-r": case "--uninstall": case "--remove":
                             toRemove.Add(args[++n]);
                             break;
-                        case "-u": case "--update":
+                        case "--redownload":
                             toRemove.Add(args[++n]);
-                            toDownload.Add(args[n]); // y e s, that's how you update.
+                            toDownload.Add(args[n]);
                             break;
                         default:
                             ConsoleHelper.ThrowError(ErrorType.WrongOption, args[n]);
@@ -282,7 +325,8 @@ namespace FactorioModTool
                 }
                 catch(IndexOutOfRangeException e)
                 {
-                    ConsoleHelper.ThrowError(ErrorType.NoArgument, args[n]);
+                    ConsoleHelper.ThrowError(ErrorType.NoArgument, args[--n]);
+                    n_args--;
                 }
 
                 n_args++;
@@ -353,8 +397,10 @@ namespace FactorioModTool
             }
         }
 
-        static string[] FetchIds(Settings settings)
+        static List<string> FetchIds(Settings settings)
         {
+            int n_fetched_ids = 0;
+
             Console.WriteLine("Fetching installed mod ids...");
 
             List<string> modIds = new List<string>();
@@ -385,6 +431,8 @@ namespace FactorioModTool
                         JsonDocument info = JsonDocument.Parse(entry.Open());
                         modIds.Add(info.RootElement.GetProperty("name").GetString());
 
+                        n_fetched_ids++;
+
                         break;
                     }
                 }
@@ -392,9 +440,9 @@ namespace FactorioModTool
                 mod.Dispose();
             }
 
-            Console.WriteLine("Done.");
+            Console.WriteLine($"Done. Total fetched mods: {n_fetched_ids}");
 
-            return modIds.ToArray();
+            return modIds;
         }
     }
 
@@ -406,14 +454,14 @@ namespace FactorioModTool
         // But I mean it works, soo....
         public static void PrintUsage()
         {
-            Console.WriteLine("Usage: factoriomodtool [--setup] [-h] [-s] [-f] [-c] [-D] [-e MOD_ID] [-d MOD_ID] [-u MOD_ID] [-i MOD_ID] [-r MOD_ID]\nOptions:\n -h, --help\tPrint this screen.\n\n --setup\tLaunch setup tool.\n\n -s, --silent\tDo not print progress into console.\n\n -e, --enable MOD_ID\tEnable mod with mod id MOD_ID.\n -d, --disable MOD_ID\tDisable mod with mod id MOD_ID.\n -u, --update MOD_ID\tUpdate mod with mod id MOD_ID.\n -i, --install, --download MOD_ID\tDownload a mod from Factorio mod portal\n\t\t\t\t\t\twith given mod id or mod portal URI.\n\t\t\t\t\t\t(won't work if you specify a non mod-portal URI)\nExample:\n --download Krastorio2\n --download https://mods.factorio.com/mod/Krastorio2\n\n -r, --uninstall, --remove MOD_ID\tRemove downloaded MOD_ID.\n\n -c, --no-compatibility\tDo not test for compatibility of enabled mods.\n -D, --no-dependency\tDo not download dependency mods.\n -f, --force-checks\tForce compatibility and/or dependency checks even if mod list isn't changed.\n");
+            Console.WriteLine("Usage: factoriomodtool [--setup] [-h] [-s] [-f] [-c] [-D] [-e MOD_ID] [-d MOD_ID] [--redownload MOD_ID] [-i MOD_ID] [-r MOD_ID]\nOptions:\n -h, --help\tPrint this screen.\n\n --setup\tLaunch setup tool.\n\n -s, --silent\tDo not print progress into console.\n\n -e, --enable MOD_ID\tEnable mod with mod id MOD_ID.\n -d, --disable MOD_ID\tDisable mod with mod id MOD_ID.\n --redownload MOD_ID\tRedownload mod with mod id MOD_ID.\n -i, --install, --download MOD_ID\tDownload a mod from Factorio mod portal\n\t\t\t\t\t\twith given mod id or mod portal URI.\n\t\t\t\t\t\t(won't work if you specify a non mod-portal URI)\nExample:\n --download Krastorio2\n --download https://mods.factorio.com/mod/Krastorio2\n\n -r, --uninstall, --remove MOD_ID\tRemove downloaded MOD_ID.\n\n -c, --no-compatibility\tDo not test for compatibility of enabled mods.\n -D, --no-dependency\tDo not download dependency mods.\n -f, --force-checks\tForce compatibility and/or dependency checks even if mod list isn't changed.\n");
         }
 
         // A bit obfuscated way of handling errors.
-        public static void ThrowError(ErrorType error = ErrorType.WrongCall, string msg0 = "", string msg1 = "", bool skip = true, int exitCode = 0)
+        public static void ThrowError(ErrorType error = ErrorType.NoError, string msg0 = "", string msg1 = "", bool skip = true)
         {
             Console.WriteLine($"ERROR: {error}");
-            if (error != ErrorType.WrongCall) EndStats.errorsRecorded++;
+            if (error != ErrorType.NoError) EndStats.errorsRecorded++;
             switch(error)
             {
                 case ErrorType.WrongOption:
@@ -446,6 +494,9 @@ namespace FactorioModTool
                 case ErrorType.BadMod:
                     Console.WriteLine($"Bad/corrupted mod {msg0} detected.");
                     break;
+                case ErrorType.NotImplemented:
+                    Console.WriteLine($"Functionality {msg0} not implemented yet.");
+                    break;
                 default:
                     Console.WriteLine($"This seems to be a wrong error call. Nevermind.\nError parameters: {msg0}; {msg1}; {skip}");
                     break;
@@ -458,7 +509,8 @@ namespace FactorioModTool
             else
             {
                 Console.WriteLine("Fatal error. Exiting.");
-                Environment.Exit(exitCode);
+                Console.WriteLine($"{EndStats.errorsRecorded} errors recorded.");
+                Environment.Exit((int)error);
             }
         }
     }
@@ -494,7 +546,7 @@ namespace FactorioModTool
             }
             catch (FileNotFoundException e)
             {
-                ConsoleHelper.ThrowError(ErrorType.NoSetup, "", "", false, (int)ExitCodes.NoFile);
+                ConsoleHelper.ThrowError(ErrorType.NoSetup, "", "", false);
                 return new Settings();
             }
 
@@ -521,7 +573,7 @@ namespace FactorioModTool
 
     enum ErrorType
     {
-        WrongCall,
+        NoError,
         WrongOption,
         NoArgument,
         NoSuchURI,
@@ -532,11 +584,7 @@ namespace FactorioModTool
         LocalModDoesNotExist,
         NoService,
         BadMod,
-        WrongPath
-    }
-    enum ExitCodes
-    {
-        NoError = 0,
-        NoFile = 2
+        WrongPath,
+        NotImplemented
     }
 }
