@@ -49,7 +49,8 @@ namespace FactorioModTool
         public bool forceChecks; // Force compatibility and/or dependency checks.
 
         public bool silent; // Specifies if there should be no console output.
-    }   
+    }
+    // Used for Factorio authentication.
     struct ServiceCrdntls
     {
         public string username;
@@ -61,6 +62,42 @@ namespace FactorioModTool
             this.token = token;
         }
     }
+    // Containts info about the mod.
+    struct Mod
+    {
+        public string name { get; set; }
+        public bool enabled { get; set; }
+
+        public Mod(string name, bool enabled)
+        {
+            this.name = name;
+            this.enabled = enabled;
+        }
+
+        public static bool operator ==(Mod mod0, Mod mod1)
+        {
+            return mod0.name == mod1.name;
+        }
+        public static bool operator !=(Mod mod0, Mod mod1)
+        {
+            return mod0.name != mod1.name;
+        }
+
+        public static implicit operator Mod(string mod_id)
+        {
+            return new Mod(mod_id, false);
+        }
+    }
+    // Only used for proper mod-list.json serialization/deserialization.
+    struct Mods
+    {
+        public Mod[] mods { get; set; }
+
+        public Mods(List<Mod> mods)
+        {
+            this.mods = mods.ToArray();
+        }
+    }
 
     static class EndStats
     {
@@ -69,7 +106,7 @@ namespace FactorioModTool
 
     class Program
     {
-        static List<string> modIds;
+        static List<Mod> mods;
         static Settings settings;
         static ArgsContainer parsedArgs;
         static ServiceCrdntls crdntls;
@@ -90,17 +127,17 @@ namespace FactorioModTool
 
             if(parsedArgs.n_args != 0)
             {
-                settings = FileHelper.ReadSettings();
+                settings = SettingsHelper.ReadSettings();
 
                 try
                 {
-                    settings.modsPath = settings.readWritePath.TrimEnd("player-data.json".ToCharArray()) + "mods";
+                    settings.modsPath = settings.readWritePath.TrimEnd("player-data.json".ToCharArray()) + "mods/";
                 }
                 catch(NullReferenceException e)
                 {
                     ConsoleHelper.ThrowError(ErrorType.NoPath, "readWritePath", skip: false);
                 }
-                modIds = FetchIds(settings);
+                mods = FetchMods(settings);
 
                 if (parsedArgs.toRemove.Length != 0)
                 {
@@ -111,6 +148,7 @@ namespace FactorioModTool
                     crdntls = GetCrdntls();
                     Download();
                 }
+
                 if (parsedArgs.toDisable.Length != 0)
                 {
                     Disable();
@@ -120,19 +158,48 @@ namespace FactorioModTool
                     Enable();
                 }
 
+                ModLister.WriteModList(settings.modsPath, mods);
+
                 Console.WriteLine($"Done with {EndStats.errorsRecorded} errors.");
                 parsedArgs.toDownload.ToList().ForEach(x => Console.WriteLine(x));
                 //if (EndStats.errorsRecorded != 0) Console.Write("Error codes: "); EndStats.errorCodes.ToList().ForEach(x => Console.Write($"{x} ")); Console.Write('\n');
             }
         }
         
+        // Pieces of code thrown out of Main method to make it look prettier.
         static void Enable()
         {
+            Mod[] mods_array = mods.ToArray();
 
+            foreach (string mod_enable in parsedArgs.toEnable)
+            {
+                Console.WriteLine($"Enabling {mod_enable}...");
+
+                for(int i=0;i<mods_array.Length;i++)
+                {
+                    if (mods_array[i] == mod_enable)
+                        mods_array[i].enabled = true;
+                }
+            }
+
+            mods = mods_array.ToList();
         }
         static void Disable()
         {
+            Mod[] mods_array = mods.ToArray();
 
+            foreach (string mod_enable in parsedArgs.toDisable)
+            {
+                Console.WriteLine($"Disabling {mod_enable}...");
+
+                for (int i = 0; i < mods_array.Length; i++)
+                {
+                    if (mods_array[i] == mod_enable)
+                        mods_array[i].enabled = false;
+                }
+            }
+
+            mods = mods_array.ToList();
         }
         static void Download()
         {
@@ -146,7 +213,8 @@ namespace FactorioModTool
                     if (modid.StartsWith("https://mods.factorio.com/mod/"))
                         modid = modid.TrimStart("https://mods.factorio.com/mod/".ToCharArray());
 
-                    DownloadMod(modid, wc);
+                    if(DownloadMod(modid, wc))
+                        mods.Add(mod_download);
                 }
             }
         }
@@ -156,34 +224,31 @@ namespace FactorioModTool
 
             foreach(string mod_remove in toRemove)
             {
-                Console.WriteLine($"Removing mod {mod_remove}...");
-
-                if(!modIds.Contains(mod_remove))
+                if(!mods.Contains(mod_remove))
                 {
                     ConsoleHelper.ThrowError(ErrorType.LocalModDoesNotExist, mod_remove);
                     continue;
                 }
 
-                //File.de
-
-                modIds.Remove(mod_remove);
+                RemoveMod(mod_remove);
+                mods.Remove(mod_remove);
             }
         }
 
-        static void DownloadMod(string mod_download, WebClient wc)
+        static bool DownloadMod(string mod_download, WebClient wc)
         {
             Console.WriteLine($"Downloading mod {mod_download}...");
 
             if(crdntls.username == "" || crdntls.token == "")
             {
                 ConsoleHelper.ThrowError(ErrorType.NoService);
-                return;
+                return false;
             }
 
-            if (modIds.Contains(mod_download))
+            if (mods.Contains(mod_download))
             {
                 ConsoleHelper.ThrowError(ErrorType.LocalModExists, mod_download);
-                return;
+                return false;
             }
 
             WebRequest request = WebRequest.Create($"https://mods.factorio.com/api/mods/{mod_download}/full");
@@ -196,7 +261,7 @@ namespace FactorioModTool
             catch (WebException e)
             {
                 ConsoleHelper.ThrowError(ErrorType.NoSuchMod, mod_download);
-                return;
+                return false;
             }
 
             JsonDocument api_json = JsonDocument.Parse(response.GetResponseStream());
@@ -237,12 +302,18 @@ namespace FactorioModTool
             }
 
             Console.WriteLine($"Finished downloading {mod_download}, {prevBytes / 1024 / 1024} MB.");
+
+            return true;
         }
-        
-        static void DownloadMod(string mod_download)
+        static bool DownloadMod(string mod_download)
         {
             using(WebClient wc = new WebClient())
-                DownloadMod(mod_download, wc);
+                return DownloadMod(mod_download, wc);
+        }
+        static void RemoveMod(string mod_remove)
+        {
+            Console.WriteLine($"Removing mod {mod_remove}...");
+            File.Delete(settings.modsPath + mod_remove);
         }
 
         static ServiceCrdntls GetCrdntls()
@@ -364,7 +435,7 @@ namespace FactorioModTool
             }
 
             Console.WriteLine("Writing paths to a settings file...");
-            FileHelper.WriteSettings(exePath, readWritePath);
+            SettingsHelper.WriteSettings(exePath, readWritePath);
 
             string GetExePath()
             {
@@ -397,25 +468,27 @@ namespace FactorioModTool
             }
         }
 
-        static List<string> FetchIds(Settings settings)
+        static List<Mod> FetchMods(Settings settings)
         {
             int n_fetched_ids = 0;
 
-            Console.WriteLine("Fetching installed mod ids...");
+            Console.WriteLine("Fetching installed mods...");
 
-            List<string> modIds = new List<string>();
+            List<Mod> mods = new List<Mod>();
 
-            string[] mods = Directory.GetFiles(settings.modsPath, "*.zip");
+            mods.Add(new Mod("base", true)); // adding base mod to prevent oopsies
 
-            foreach(string modPath in mods)
+            string[] mod_zips = Directory.GetFiles(settings.modsPath, "*.zip");
+
+            foreach(string modPath in mod_zips)
             {
                 Console.WriteLine($"Fetching {Path.GetFileName(modPath)}...");
 
-                ZipArchive mod;
+                ZipArchive mod_zip;
 
                 try
                 {
-                    mod = ZipFile.Open(modPath, ZipArchiveMode.Read, System.Text.Encoding.UTF8);
+                    mod_zip = ZipFile.Open(modPath, ZipArchiveMode.Read, System.Text.Encoding.UTF8);
                 }
                 catch
                 {
@@ -424,12 +497,12 @@ namespace FactorioModTool
                 }
                 
 
-                foreach(ZipArchiveEntry entry in mod.Entries)
+                foreach(ZipArchiveEntry entry in mod_zip.Entries)
                 {
                     if(entry.Name == "info.json")
                     {
                         JsonDocument info = JsonDocument.Parse(entry.Open());
-                        modIds.Add(info.RootElement.GetProperty("name").GetString());
+                        mods.Add(info.RootElement.GetProperty("name").GetString());
 
                         n_fetched_ids++;
 
@@ -437,12 +510,12 @@ namespace FactorioModTool
                     }
                 }
 
-                mod.Dispose();
+                mod_zip.Dispose();
             }
 
             Console.WriteLine($"Done. Total fetched mods: {n_fetched_ids}");
 
-            return modIds;
+            return ModLister.ReadModList(settings.modsPath, mods.ToArray());
         }
     }
 
@@ -483,10 +556,10 @@ namespace FactorioModTool
                     Console.WriteLine($"Specified path {msg0} does not end with expected {msg1}.");
                     break;
                 case ErrorType.LocalModExists:
-                    Console.WriteLine($"Download request was called for mod {msg0}, but it is already downloaded.");
+                    Console.WriteLine($"Download request was called for mod {msg0}, but it is already fetched.");
                     break;
                 case ErrorType.LocalModDoesNotExist:
-                    Console.WriteLine($"Enable/disable/remove request was called for mod {msg0}, but it wasn't already downloaded.");
+                    Console.WriteLine($"An operation was requested for mod {msg0}, but it wasn't already fetched.");
                     break;
                 case ErrorType.NoService:
                     Console.WriteLine($"Service username and token are absent. Please, open Factorio and log in into your Factorio account.");
@@ -496,6 +569,9 @@ namespace FactorioModTool
                     break;
                 case ErrorType.NotImplemented:
                     Console.WriteLine($"Functionality {msg0} not implemented yet.");
+                    break;
+                case ErrorType.MissingModList:
+                    Console.WriteLine($"Required file mod-list.json is missing. Cannot fetch mods.");
                     break;
                 default:
                     Console.WriteLine($"This seems to be a wrong error call. Nevermind.\nError parameters: {msg0}; {msg1}; {skip}");
@@ -515,7 +591,7 @@ namespace FactorioModTool
         }
     }
     // Various stuff to help with file I/O.
-    static class FileHelper
+    static class SettingsHelper
     {
         public static void WriteSettings(Settings settings)
         {
@@ -570,7 +646,62 @@ namespace FactorioModTool
             return settings;
         }
     }
+    // A class that handles mod-list.json stuff.
+    static class ModLister
+    {
+        public static List<Mod> ReadModList(string modsPath, Mod[] fetched_mod_zips)
+        {
+            FileStream mod_list;
+            try
+            {
+                mod_list = File.Open(modsPath + "mod-list.json", FileMode.Open, FileAccess.Read);
+            }
+            catch (FileNotFoundException e)
+            {
+                ConsoleHelper.ThrowError(ErrorType.MissingModList, skip: false);
+                return null;
+            }
+            StreamReader mod_list_stream = new StreamReader(mod_list);
 
+            //StreamReader test = new StreamReader(mod_list);
+            //Console.WriteLine(test.ReadToEnd());
+            //test.Close();
+
+            Mod[] mod_list_fetch = JsonSerializer.Deserialize<Mods>(mod_list_stream.ReadToEnd()).mods;
+
+            mod_list_stream.Close();
+            mod_list.Close();
+
+            for (int i = 0; i < fetched_mod_zips.Length; i++)
+            {
+                foreach (Mod mod_in_list_fetch in mod_list_fetch)
+                {
+                    if (fetched_mod_zips[i] == mod_in_list_fetch)
+                    {
+                        fetched_mod_zips[i].enabled = mod_in_list_fetch.enabled;
+                    }
+                }
+            }
+
+            return fetched_mod_zips.ToList();
+        }
+        public static void WriteModList(string modsPath, List<Mod> mods)
+        {
+            Console.WriteLine("Writing mod-list.json...");
+
+            FileStream mod_list = File.Open(modsPath + "mod-list.json", FileMode.Create, FileAccess.Write);
+            StreamWriter mod_list_stream = new StreamWriter(mod_list);
+
+            mod_list_stream.Write(JsonSerializer.Serialize(new Mods(mods), new JsonSerializerOptions() { WriteIndented = true }));
+
+            mod_list_stream.Close();
+            mod_list.Close();
+
+            Console.WriteLine("Done writing.");
+        }
+    }
+    
+    // This tool should catch all possible exceptions and throw it's own kind of error.
     enum ErrorType
     {
         NoError,
@@ -585,6 +716,7 @@ namespace FactorioModTool
         NoService,
         BadMod,
         WrongPath,
+        MissingModList,
         NotImplemented
     }
 }
