@@ -708,7 +708,6 @@ namespace FactorioModTool
         NoError,
         WrongOption,
         NoArgument,
-        NoSuchURI,
         NoSuchMod,
         NoPath,
         NoSetup,
