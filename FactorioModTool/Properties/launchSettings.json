@@ -2,7 +2,7 @@
   "profiles": {
     "FactorioModTool": {
       "commandName": "Project",
-      "commandLineArgs": "--disable flib --disable EditorExtensions"
+      "commandLineArgs": "--redownload grappling-gun"
     }
   }
 }

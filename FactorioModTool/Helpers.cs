@@ -10,6 +10,17 @@ using System.Threading;
 
 namespace FactorioModTool
 {
+    // Only used for proper mod-list.json serialization/deserialization.
+    struct Mods
+    {
+        public Mod[] mods { get; set; }
+
+        public Mods(List<Mod> mods)
+        {
+            this.mods = mods.ToArray();
+        }
+    }
+
     // Various stuff to help with console I/O.
     static class ConsoleHelper
     {
@@ -155,10 +166,6 @@ namespace FactorioModTool
             }
             StreamReader mod_list_stream = new StreamReader(mod_list);
 
-            //StreamReader test = new StreamReader(mod_list);
-            //Console.WriteLine(test.ReadToEnd());
-            //test.Close();
-
             Mod[] mod_list_fetch = JsonSerializer.Deserialize<Mods>(mod_list_stream.ReadToEnd()).mods;
 
             mod_list_stream.Close();
@@ -168,13 +175,14 @@ namespace FactorioModTool
             {
                 foreach (Mod mod_in_list_fetch in mod_list_fetch)
                 {
-                    if (fetched_mod_zips[i] == mod_in_list_fetch)
+                    if (fetched_mod_zips[i].Equals(mod_in_list_fetch))
                     {
                         fetched_mod_zips[i].enabled = mod_in_list_fetch.enabled;
                     }
                 }
             }
 
+            //fetched_mod_zips.ToList().ForEach(x => Console.WriteLine(x));
             return fetched_mod_zips.ToList();
         }
         public static void WriteModList(string modsPath, List<Mod> mods)

@@ -74,28 +74,34 @@ namespace FactorioModTool
             this.enabled = enabled;
         }
 
-        public static bool operator ==(Mod mod0, Mod mod1)
-        {
-            return mod0.name == mod1.name;
-        }
-        public static bool operator !=(Mod mod0, Mod mod1)
-        {
-            return mod0.name != mod1.name;
-        }
-
+        //public static bool operator ==(Mod mod0, Mod mod1)
+        //{
+        //    return mod0.name == mod1.name;
+        //}
+        //public static bool operator !=(Mod mod0, Mod mod1)
+        //{
+        //    return mod0.name != mod1.name;
+        //}
         public static implicit operator Mod(string mod_id)
         {
             return new Mod(mod_id, false);
         }
-    }
-    // Only used for proper mod-list.json serialization/deserialization.
-    struct Mods
-    {
-        public Mod[] mods { get; set; }
-
-        public Mods(List<Mod> mods)
+        public static implicit operator string(Mod mod)
         {
-            this.mods = mods.ToArray();
+            return mod.name;
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (obj == null) return false;
+            Mod mod = obj as Mod;
+            if (mod == null) return false;
+            else return Equals(mod);
+        }
+        public bool Equals(Mod mod)
+        {
+            if (mod == null) return false;
+            return name == mod.name;
         }
     }
 
@@ -106,6 +112,7 @@ namespace FactorioModTool
 
     class Program
     {
+        static Dictionary<string, string> mod_to_zip;
         static List<Mod> mods;
         static Settings settings;
         static ArgsContainer parsedArgs;
@@ -161,6 +168,7 @@ namespace FactorioModTool
                 ModLister.WriteModList(settings.modsPath, mods);
 
                 Console.WriteLine($"Done with {EndStats.errorsRecorded} errors.");
+                //Console.WriteLine(mods.Contains("bobores"));
                 //parsedArgs.toDownload.ToList().ForEach(x => Console.WriteLine(x));
                 //if (EndStats.errorsRecorded != 0) Console.Write("Error codes: "); EndStats.errorCodes.ToList().ForEach(x => Console.Write($"{x} ")); Console.Write('\n');
             }
@@ -175,7 +183,7 @@ namespace FactorioModTool
 
                 for(int i=0;i<mods.Count;i++)
                 {
-                    if (mods[i] == mod_enable)
+                    if (mods[i].Equals(mod_enable))
                         mods[i].enabled = true;
                 }
             }
@@ -188,7 +196,7 @@ namespace FactorioModTool
 
                 for (int i = 0; i < mods.Count; i++)
                 {
-                    if (mods[i] == mod_disable)
+                    if (mods[i].Equals(mod_disable))
                         mods[i].enabled = false;
                 }
             }
@@ -205,10 +213,11 @@ namespace FactorioModTool
                     if (modid.StartsWith("https://mods.factorio.com/mod/"))
                         modid = modid.TrimStart("https://mods.factorio.com/mod/".ToCharArray());
 
-                    if(DownloadMod(modid, wc))
-                        mods.Add(mod_download);
+                    DownloadMod(modid, wc);
                 }
             }
+
+            mods = FetchMods(settings);
         }
         static void Remove()
         {
@@ -223,8 +232,9 @@ namespace FactorioModTool
                 }
 
                 RemoveMod(mod_remove);
-                mods.Remove(mod_remove);
             }
+
+            mods = FetchMods(settings);
         }
 
         static bool DownloadMod(string mod_download, WebClient wc)
@@ -305,7 +315,7 @@ namespace FactorioModTool
         static void RemoveMod(string mod_remove)
         {
             Console.WriteLine($"Removing mod {mod_remove}...");
-            File.Delete(settings.modsPath + mod_remove);
+            File.Delete(mod_to_zip.GetValueOrDefault(mod_remove));
         }
 
         static ServiceCrdntls GetCrdntls()
@@ -467,6 +477,7 @@ namespace FactorioModTool
             Console.WriteLine("Fetching installed mods...");
 
             List<Mod> mods = new List<Mod>();
+            mod_to_zip = new Dictionary<string, string>();
 
             mods.Add(new Mod("base", true)); // adding base mod to prevent oopsies
 
@@ -487,14 +498,16 @@ namespace FactorioModTool
                     ConsoleHelper.ThrowError(ErrorType.BadMod, modPath);
                     continue;
                 }
-                
 
                 foreach(ZipArchiveEntry entry in mod_zip.Entries)
                 {
                     if(entry.Name == "info.json")
                     {
                         JsonDocument info = JsonDocument.Parse(entry.Open());
-                        mods.Add(info.RootElement.GetProperty("name").GetString());
+                        string mod_name = info.RootElement.GetProperty("name").GetString();
+
+                        mods.Add(mod_name);
+                        mod_to_zip.Add(mod_name, modPath);
 
                         n_fetched_ids++;
 
@@ -504,6 +517,8 @@ namespace FactorioModTool
 
                 mod_zip.Dispose();
             }
+
+            //mods.ForEach(x => Console.WriteLine(x));
 
             Console.WriteLine($"Done. Total fetched mods: {n_fetched_ids}");
 
