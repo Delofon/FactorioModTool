@@ -63,7 +63,7 @@ namespace FactorioModTool
         }
     }
     // Contains info about the mod.
-    struct Mod
+    class Mod
     {
         public string name { get; set; }
         public bool enabled { get; set; }
@@ -161,7 +161,7 @@ namespace FactorioModTool
                 ModLister.WriteModList(settings.modsPath, mods);
 
                 Console.WriteLine($"Done with {EndStats.errorsRecorded} errors.");
-                parsedArgs.toDownload.ToList().ForEach(x => Console.WriteLine(x));
+                //parsedArgs.toDownload.ToList().ForEach(x => Console.WriteLine(x));
                 //if (EndStats.errorsRecorded != 0) Console.Write("Error codes: "); EndStats.errorCodes.ToList().ForEach(x => Console.Write($"{x} ")); Console.Write('\n');
             }
         }
@@ -169,37 +169,29 @@ namespace FactorioModTool
         // Pieces of code thrown out of Main method to make it look prettier.
         static void Enable()
         {
-            Mod[] mods_array = mods.ToArray();
-
             foreach (string mod_enable in parsedArgs.toEnable)
             {
                 Console.WriteLine($"Enabling {mod_enable}...");
 
-                for(int i=0;i<mods_array.Length;i++)
+                for(int i=0;i<mods.Count;i++)
                 {
-                    if (mods_array[i] == mod_enable)
-                        mods_array[i].enabled = true;
+                    if (mods[i] == mod_enable)
+                        mods[i].enabled = true;
                 }
             }
-
-            mods = mods_array.ToList();
         }
         static void Disable()
         {
-            Mod[] mods_array = mods.ToArray();
-
-            foreach (string mod_enable in parsedArgs.toDisable)
+            foreach (string mod_disable in parsedArgs.toDisable)
             {
-                Console.WriteLine($"Disabling {mod_enable}...");
+                Console.WriteLine($"Disabling {mod_disable}...");
 
-                for (int i = 0; i < mods_array.Length; i++)
+                for (int i = 0; i < mods.Count; i++)
                 {
-                    if (mods_array[i] == mod_enable)
-                        mods_array[i].enabled = false;
+                    if (mods[i] == mod_disable)
+                        mods[i].enabled = false;
                 }
             }
-
-            mods = mods_array.ToList();
         }
         static void Download()
         {
