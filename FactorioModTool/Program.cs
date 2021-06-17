@@ -62,7 +62,7 @@ namespace FactorioModTool
             this.token = token;
         }
     }
-    // Containts info about the mod.
+    // Contains info about the mod.
     struct Mod
     {
         public string name { get; set; }
