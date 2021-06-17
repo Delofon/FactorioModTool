@@ -5,4 +5,4 @@
  
  This tool comes in two flavours:
  1. A CLI tool, factoriomodtool itself.
- 2. A GUI wrapper for the factoriomodtool.
+ 2. A WIP GUI wrapper for the factoriomodtool.
