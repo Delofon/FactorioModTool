@@ -117,6 +117,8 @@ namespace FactorioModTool
         static Settings settings;
         static ArgsContainer parsedArgs;
         static ServiceCrdntls crdntls;
+		
+		bool reFetch = false;
 
         static void Main(string[] args)
         {
@@ -155,6 +157,9 @@ namespace FactorioModTool
                     crdntls = GetCrdntls();
                     Download();
                 }
+				
+				if(reFetch)
+					mods = FetchMods(settings);
 
                 if (parsedArgs.toDisable.Length != 0)
                 {
@@ -216,8 +221,8 @@ namespace FactorioModTool
                     DownloadMod(modid, wc);
                 }
             }
-
-            mods = FetchMods(settings);
+			
+			reFetch = true;
         }
         static void Remove()
         {
@@ -233,8 +238,8 @@ namespace FactorioModTool
 
                 RemoveMod(mod_remove);
             }
-
-            mods = FetchMods(settings);
+			
+			reFetch = true;
         }
 
         static bool DownloadMod(string mod_download, WebClient wc)
