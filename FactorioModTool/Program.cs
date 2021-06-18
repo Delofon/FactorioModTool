@@ -118,7 +118,7 @@ namespace FactorioModTool
         static ArgsContainer parsedArgs;
         static ServiceCrdntls crdntls;
 		
-		bool reFetch = false;
+		static bool reFetch = false;
 
         static void Main(string[] args)
         {
