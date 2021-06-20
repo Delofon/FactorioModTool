@@ -36,6 +36,7 @@ namespace FactorioModTool
 
         public string[] toEnable; // Contains IDs of mods to be enabled.
         public string[] toDisable; // Contains IDs of mods to be disabled.
+        public bool disableAll; // Disable all mods lol
         public string[] toRemove; // Contains IDs of mods to be removed.
 
         public string[] toDownload; // Contains IDs of mods to download.
@@ -49,6 +50,8 @@ namespace FactorioModTool
         public bool forceChecks; // Force compatibility and/or dependency checks.
 
         public bool silent; // Specifies if there should be no console output.
+
+        public bool getMods;
     }
     // Used for Factorio authentication.
     struct ServiceCrdntls
@@ -68,6 +71,8 @@ namespace FactorioModTool
         public string name { get; set; }
         public bool enabled { get; set; }
 
+        public string zipName;
+
         public Mod(string name, bool enabled)
         {
             this.name = name;
@@ -76,13 +81,13 @@ namespace FactorioModTool
 
         //public static bool operator ==(Mod mod0, Mod mod1)
         //{
-        //    return mod0.name == mod1.name;
+        //    return mod0.Equals(mod1);
         //}
         //public static bool operator !=(Mod mod0, Mod mod1)
         //{
-        //    return mod0.name != mod1.name;
+        //    return !mod0.Equals(mod1);
         //}
-        public static implicit operator Mod(string mod_id)
+        public static explicit operator Mod(string mod_id)
         {
             return new Mod(mod_id, false);
         }
@@ -103,16 +108,26 @@ namespace FactorioModTool
             if (mod == null) return false;
             return name == mod.name;
         }
+
+        public override int GetHashCode()
+        {
+            return (name.GetHashCode() << 1) ^ enabled.GetHashCode();
+        }
+
+        public override string ToString()
+        {
+            return name;
+        }
     }
 
     static class EndStats
     {
         public static int errorsRecorded;
+        // add any interesting statistics here
     }
 
     class Program
     {
-        static Dictionary<string, string> mod_to_zip;
         static List<Mod> mods;
         static Settings settings;
         static ArgsContainer parsedArgs;
@@ -170,6 +185,13 @@ namespace FactorioModTool
                     Enable();
                 }
 
+                if(parsedArgs.getMods)
+                {
+                    Console.Write("Enabled mods: ");
+                    mods.ForEach(x => { if (x.enabled) Console.Write($"{x.name} "); });
+                    Console.WriteLine();
+                }
+
                 ModLister.WriteModList(settings.modsPath, mods);
 
                 Console.WriteLine($"Done with {EndStats.errorsRecorded} errors.");
@@ -195,7 +217,24 @@ namespace FactorioModTool
         }
         static void Disable()
         {
-            foreach (string mod_disable in parsedArgs.toDisable)
+            string[] toDisable;
+
+            #region ugly
+            if (parsedArgs.disableAll)
+            {
+                toDisable = new string[mods.Count];
+                for (int i = 0; i < mods.Count; i++) 
+                {
+                    toDisable[i] = mods[i].name;
+                }
+            }
+            else
+            {
+                toDisable = parsedArgs.toDisable;
+            }
+            #endregion
+
+            foreach (string mod_disable in toDisable)
             {
                 Console.WriteLine($"Disabling {mod_disable}...");
 
@@ -230,13 +269,17 @@ namespace FactorioModTool
 
             foreach(string mod_remove in toRemove)
             {
-                if(!mods.Contains(mod_remove))
+                Mod mod;
+
+                if(!mods.Contains((Mod)mod_remove))
                 {
                     ConsoleHelper.ThrowError(ErrorType.LocalModDoesNotExist, mod_remove);
                     continue;
                 }
 
-                RemoveMod(mod_remove);
+                mod = mods.Find(x => x.name == mod_remove); // TODO: fix this uglyness
+
+                RemoveMod(mod);
             }
 			
 			reFetch = true;
@@ -252,7 +295,7 @@ namespace FactorioModTool
                 return false;
             }
 
-            if (mods.Contains(mod_download))
+            if (mods.Contains((Mod)mod_download))
             {
                 ConsoleHelper.ThrowError(ErrorType.LocalModExists, mod_download);
                 return false;
@@ -293,7 +336,6 @@ namespace FactorioModTool
             void ProgressChanged(object sender, DownloadProgressChangedEventArgs args)
             {
                 long curBytes = args.BytesReceived;
-                int curPercentage = args.ProgressPercentage;
 
                 if (prevBytes / 1024 / 1024 != curBytes / 1024 / 1024)
                 {
@@ -317,10 +359,10 @@ namespace FactorioModTool
             using(WebClient wc = new WebClient())
                 return DownloadMod(mod_download, wc);
         }
-        static void RemoveMod(string mod_remove)
+        static void RemoveMod(Mod mod_remove)
         {
-            Console.WriteLine($"Removing mod {mod_remove}...");
-            File.Delete(mod_to_zip.GetValueOrDefault(mod_remove));
+            Console.WriteLine($"Removing mod {(string)mod_remove}...");
+            File.Delete(mod_remove.zipName);
         }
 
         static ServiceCrdntls GetCrdntls()
@@ -352,6 +394,32 @@ namespace FactorioModTool
             List<string> toDisable = new List<string>();
             List<string> toDownload = new List<string>();
             List<string> toRemove = new List<string>();
+            List<int> ignoredErrors = new List<int>();
+
+            #region PreParseArgs
+            for (int n = 0; n < args.Length; n++)
+            {
+                switch (args[n])
+                {
+                    case "--ignore-error":
+                        try
+                        {
+                            ignoredErrors.Add(int.Parse(args[++n]));
+                        }
+                        catch (FormatException e)
+                        {
+                            ConsoleHelper.ThrowError(ErrorType.BadArgument, "--ignore-error", "Int32");
+                            n_args--;
+                        }
+                        break;
+                    case "--crybaby":
+                        ConsoleHelper.cryBabyMode = true;
+                        break;
+                }
+
+                n_args++;
+            }
+            #endregion
 
             ArgsContainer _parsedArgs = new ArgsContainer();
 
@@ -369,15 +437,19 @@ namespace FactorioModTool
                             break;
                         case "-s": case "--silent":
                             _parsedArgs.silent = true;
+                                ConsoleHelper.ThrowError(ErrorType.NotImplemented, "-s");
                             break;
                         case "-f": case "--force-checks":
                             _parsedArgs.forceChecks = true;
+                                ConsoleHelper.ThrowError(ErrorType.NotImplemented, "-f");
                             break;
                         case "-c": case "--no-compatibility":
                             _parsedArgs.noCompatibilityCheck = true;
+                                ConsoleHelper.ThrowError(ErrorType.NotImplemented, "-c");
                             break;
                         case "-D": case "--no-dependency":
                             _parsedArgs.noDependencyCheck = true;
+                                ConsoleHelper.ThrowError(ErrorType.NotImplemented, "-D");
                             break;
                         case "-e": case "--enable":
                             toEnable.Add(args[++n]);
@@ -394,6 +466,16 @@ namespace FactorioModTool
                         case "--redownload":
                             toRemove.Add(args[++n]);
                             toDownload.Add(args[n]);
+                            break;
+                        case "--disable-all":
+                            _parsedArgs.disableAll = true;
+                            break;
+                        case "--get-mods":
+                            _parsedArgs.getMods = true;
+                            break;
+                        case "--ignore-error": // TODO: fix this uglyness
+                            break;
+                        case "--crybaby":
                             break;
                         default:
                             ConsoleHelper.ThrowError(ErrorType.WrongOption, args[n]);
@@ -416,6 +498,8 @@ namespace FactorioModTool
             _parsedArgs.toDisable = toDisable.ToArray();
             _parsedArgs.toDownload = toDownload.ToArray();
             _parsedArgs.toRemove = toRemove.ToArray();
+
+            ConsoleHelper.ignoredErrors = ignoredErrors.ToArray();
 
             return _parsedArgs;
         }
@@ -482,7 +566,6 @@ namespace FactorioModTool
             Console.WriteLine("Fetching installed mods...");
 
             List<Mod> mods = new List<Mod>();
-            mod_to_zip = new Dictionary<string, string>();
 
             mods.Add(new Mod("base", true)); // adding base mod to prevent oopsies
 
@@ -509,10 +592,11 @@ namespace FactorioModTool
                     if(entry.Name == "info.json")
                     {
                         JsonDocument info = JsonDocument.Parse(entry.Open());
-                        string mod_name = info.RootElement.GetProperty("name").GetString();
+                        Mod mod_name;
+                        mod_name = (Mod)info.RootElement.GetProperty("name").GetString();
+                        mod_name.zipName = modPath;
 
                         mods.Add(mod_name);
-                        mod_to_zip.Add(mod_name, modPath);
 
                         n_fetched_ids++;
 
@@ -536,6 +620,7 @@ namespace FactorioModTool
     {
         NoError,
         WrongOption,
+        BadArgument,
         NoArgument,
         NoSuchMod,
         NoPath,

@@ -24,70 +24,86 @@ namespace FactorioModTool
     // Various stuff to help with console I/O.
     static class ConsoleHelper
     {
+        public static int[] ignoredErrors;
+        public static bool cryBabyMode;
+
         // Uh oh
         // There must have been other (BETTER) ways of doing that, I must just happen to be very ignorant lol
         // But I mean it works, soo....
         public static void PrintUsage()
         {
-            Console.WriteLine("Usage: factoriomodtool [--setup] [-h] [-e MOD_ID] [-d MOD_ID] [--redownload MOD_ID] [-i MOD_ID] [-r MOD_ID]\nOptions:\n -h, --help\tPrint this screen.\n\n --setup\tLaunch setup tool.\n\n -e, --enable MOD_ID\tEnable mod with mod id MOD_ID.\n -d, --disable MOD_ID\tDisable mod with mod id MOD_ID.\n --redownload MOD_ID\tRedownload mod with mod id MOD_ID.\n -i, --install, --download MOD_ID\tDownload a mod from Factorio mod portal\n\t\t\t\t\t\twith given mod id or mod portal URI.\n\t\t\t\t\t\t(won't work if you specify a non mod-portal URI)\nExample:\n --download Krastorio2\n --download https://mods.factorio.com/mod/Krastorio2\n\n -r, --uninstall, --remove MOD_ID\tRemove downloaded MOD_ID.");
-            //Console.WriteLine("Usage: factoriomodtool [--setup] [-h] [-s] [-f] [-c] [-D] [-e MOD_ID] [-d MOD_ID] [--redownload MOD_ID] [-i MOD_ID] [-r MOD_ID]\nOptions:\n -h, --help\tPrint this screen.\n\n --setup\tLaunch setup tool.\n\n -s, --silent\tDo not print progress into console.\n\n -e, --enable MOD_ID\tEnable mod with mod id MOD_ID.\n -d, --disable MOD_ID\tDisable mod with mod id MOD_ID.\n --redownload MOD_ID\tRedownload mod with mod id MOD_ID.\n -i, --install, --download MOD_ID\tDownload a mod from Factorio mod portal\n\t\t\t\t\t\twith given mod id or mod portal URI.\n\t\t\t\t\t\t(won't work if you specify a non mod-portal URI)\nExample:\n --download Krastorio2\n --download https://mods.factorio.com/mod/Krastorio2\n\n -r, --uninstall, --remove MOD_ID\tRemove downloaded MOD_ID.\n\n -c, --no-compatibility\tDo not test for compatibility of enabled mods.\n -D, --no-dependency\tDo not download dependency mods.\n -f, --force-checks\tForce compatibility and/or dependency checks even if mod list isn't changed.\n");
+            // Accurate for 0.2.0
+            //Console.WriteLine("Usage: factoriomodtool [--setup] [-h] [-e MOD_ID] [-d MOD_ID] [--redownload MOD_ID] [-i MOD_ID] [-r MOD_ID]\nOptions:\n -h, --help\tPrint this screen.\n\n --setup\tLaunch setup tool.\n\n -e, --enable MOD_ID\tEnable mod with mod id MOD_ID.\n -d, --disable MOD_ID\tDisable mod with mod id MOD_ID.\n --redownload MOD_ID\tRedownload mod with mod id MOD_ID.\n -i, --install, --download MOD_ID\tDownload a mod from Factorio mod portal\n\t\t\t\t\t\twith given mod id or mod portal URI.\n\t\t\t\t\t\t(won't work if you specify a non mod-portal URI)\nExample:\n --download Krastorio2\n --download https://mods.factorio.com/mod/Krastorio2\n\n -r, --uninstall, --remove MOD_ID\tRemove downloaded MOD_ID.");
+            // Accurate for 1.0.0
+            Console.WriteLine("Some of the options features may not be present yet.\nUsage: factoriomodtool [--setup] [-h] [-s] [-f] [-c] [-D] [--get-mods] [--crybaby] [--ignore-error ERROR_CODE] [--disable-all] [-e MOD_ID] [-d MOD_ID] [--redownload MOD_ID] [-i MOD_ID] [-r MOD_ID]\nOptions:\n -h, --help\tPrint this screen.\n\n --setup\tLaunch setup tool.\n\n -s, --silent\tDo not print progress into console.\n --get-mods\tOutputs all enabled mods in a string.\n --ignore-error ERROR_CODE\tIgnore error with code ERROR_CODE. This won't skip fatal errors.\n --crybaby\tEvery error is fatal.\n\n -e, --enable MOD_ID\tEnable mod with mod id MOD_ID.\n -d, --disable MOD_ID\tDisable mod with mod id MOD_ID.\n --disable-all\tDisable all mods. (beware: disables base mod)\n --redownload MOD_ID\tRedownload mod with mod id MOD_ID.\n -i, --install, --download MOD_ID\tDownload a mod from Factorio mod portal\n\t\t\t\t\twith given mod id or mod portal URL.\n\t\t\t\t\t(won't work if you specify a non mod-portal URL)\n -r, --uninstall, --remove MOD_ID\tRemove downloaded MOD_ID.\n\n -c, --no-compatibility\tDo not test for compatibility of enabled mods.\n -D, --no-dependency\tDo not download dependency mods.\n -f, --force-checks\tForce compatibility and/or dependency checks even if mod list isn't changed.\n");
         }
 
         // A bit obfuscated way of handling errors.
         public static void ThrowError(ErrorType error = ErrorType.NoError, string msg0 = "", string msg1 = "", bool skip = true)
         {
-            Console.WriteLine($"ERROR: {error}");
-            if (error != ErrorType.NoError) EndStats.errorsRecorded++;
-            switch (error)
+            bool skipError = false;
+
+            if (ignoredErrors != null && ignoredErrors.Contains((int)error))
+                    skipError = true;
+
+            if (!skipError)
             {
-                case ErrorType.WrongOption:
-                    Console.WriteLine($"There is no such option as {msg0}.");
-                    break;
-                case ErrorType.NoArgument:
-                    Console.WriteLine($"Argument expected for option {msg0}, got none at the end of option list.");
-                    break;
-                case ErrorType.NoSuchMod:
-                    Console.WriteLine($"There is no such mod as {msg0}.");
-                    break;
-                case ErrorType.NoPath:
-                    Console.WriteLine($"Required path {msg0} is not specified. Please, launch setup tool: factoriomodtool --setup");
-                    break;
-                case ErrorType.NoSetup:
-                    Console.WriteLine($"Settings file is missing. Please, launch setup tool: factoriomodtool --setup");
-                    break;
-                case ErrorType.WrongPath:
-                    Console.WriteLine($"Specified path {msg0} does not end with expected {msg1}.");
-                    break;
-                case ErrorType.LocalModExists:
-                    Console.WriteLine($"Download request was called for mod {msg0}, but it is already fetched.");
-                    break;
-                case ErrorType.LocalModDoesNotExist:
-                    Console.WriteLine($"An operation was requested for mod {msg0}, but it wasn't already fetched.");
-                    break;
-                case ErrorType.NoService:
-                    Console.WriteLine($"Service username and token are absent. Please, open Factorio and log in into your Factorio account.");
-                    break;
-                case ErrorType.BadMod:
-                    Console.WriteLine($"Bad/corrupted mod {msg0} detected.");
-                    break;
-                case ErrorType.NotImplemented:
-                    Console.WriteLine($"Functionality {msg0} not implemented yet.");
-                    break;
-                case ErrorType.MissingModList:
-                    Console.WriteLine($"Required file mod-list.json is missing. Cannot fetch mods.");
-                    break;
-                default:
-                    Console.WriteLine($"This seems to be a wrong error call. Nevermind.\nError parameters: {msg0}; {msg1}; {skip}");
-                    break;
+                Console.WriteLine($"ERROR {(int)error}: {error}");
+                if (error != ErrorType.NoError) EndStats.errorsRecorded++;
+                switch (error)
+                {
+                    case ErrorType.WrongOption:
+                        Console.WriteLine($"There is no such option as {msg0}.");
+                        break;
+                    case ErrorType.BadArgument:
+                        Console.WriteLine($"For option {msg0} requested argument of type {msg1}.");
+                        break;
+                    case ErrorType.NoArgument:
+                        Console.WriteLine($"Argument expected for option {msg0}, got none at the end of option list.");
+                        break;
+                    case ErrorType.NoSuchMod:
+                        Console.WriteLine($"There is no such mod as {msg0}.");
+                        break;
+                    case ErrorType.NoPath:
+                        Console.WriteLine($"Required path {msg0} is not specified. Please, launch setup tool: factoriomodtool --setup");
+                        break;
+                    case ErrorType.NoSetup:
+                        Console.WriteLine($"Settings file is missing. Please, launch setup tool: factoriomodtool --setup");
+                        break;
+                    case ErrorType.WrongPath:
+                        Console.WriteLine($"Specified path {msg0} does not end with expected {msg1}.");
+                        break;
+                    case ErrorType.LocalModExists:
+                        Console.WriteLine($"Download request was called for mod {msg0}, but it was already fetched.");
+                        break;
+                    case ErrorType.LocalModDoesNotExist:
+                        Console.WriteLine($"An operation was requested for mod {msg0}, but it wasn't already fetched.");
+                        break;
+                    case ErrorType.NoService:
+                        Console.WriteLine($"Service username and token are absent. Please, open Factorio and log in into your Factorio account.");
+                        break;
+                    case ErrorType.BadMod:
+                        Console.WriteLine($"Bad/corrupted mod {msg0} detected.");
+                        break;
+                    case ErrorType.NotImplemented:
+                        Console.WriteLine($"Requested functionality {msg0} not implemented yet.");
+                        break;
+                    case ErrorType.MissingModList:
+                        Console.WriteLine($"Required file mod-list.json is missing. Cannot fetch mods.");
+                        break;
+                    default:
+                        Console.WriteLine($"This seems to be a wrong error call. Nevermind.\nError parameters: {msg0}; {msg1}; {skip}");
+                        break;
+                }
+                if (skip && !cryBabyMode)
+                {
+                    Console.WriteLine("Skipping.");
+                }
             }
 
-            if (skip)
+            if(!skip || cryBabyMode)
             {
-                Console.WriteLine("Skipping.");
-            }
-            else
-            {
-                Console.WriteLine("Fatal error. Exiting.");
+                Console.WriteLine($"Fatal error {(int)error}. Exiting.");
                 Console.WriteLine($"{EndStats.errorsRecorded} errors recorded.");
                 Environment.Exit((int)error);
             }
