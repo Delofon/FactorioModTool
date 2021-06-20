@@ -194,6 +194,7 @@ namespace FactorioModTool
                     if (fetched_mod_zips[i].Equals(mod_in_list_fetch))
                     {
                         fetched_mod_zips[i].enabled = mod_in_list_fetch.enabled;
+                        break;
                     }
                 }
             }

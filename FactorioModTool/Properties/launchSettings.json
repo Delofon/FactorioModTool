@@ -2,7 +2,7 @@
   "profiles": {
     "FactorioModTool": {
       "commandName": "Project",
-      "commandLineArgs": "--disable-all --ignore-error 7 -e base -e Krastorio2 -i Krastorio2 -e flib -i flib"
+      "commandLineArgs": "--disable-all"
     }
   }
 }

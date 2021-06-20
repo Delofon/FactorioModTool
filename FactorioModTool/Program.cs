@@ -79,21 +79,9 @@ namespace FactorioModTool
             this.enabled = enabled;
         }
 
-        //public static bool operator ==(Mod mod0, Mod mod1)
-        //{
-        //    return mod0.Equals(mod1);
-        //}
-        //public static bool operator !=(Mod mod0, Mod mod1)
-        //{
-        //    return !mod0.Equals(mod1);
-        //}
         public static explicit operator Mod(string mod_id)
         {
             return new Mod(mod_id, false);
-        }
-        public static implicit operator string(Mod mod)
-        {
-            return mod.name;
         }
 
         public override bool Equals(object obj)
@@ -107,11 +95,6 @@ namespace FactorioModTool
         {
             if (mod == null) return false;
             return name == mod.name;
-        }
-
-        public override int GetHashCode()
-        {
-            return (name.GetHashCode() << 1) ^ enabled.GetHashCode();
         }
 
         public override string ToString()
@@ -176,9 +159,26 @@ namespace FactorioModTool
 				if(reFetch)
 					mods = FetchMods(settings);
 
-                if (parsedArgs.toDisable.Length != 0)
+                string[] toDisable;
+
+                #region ugly
+                if (parsedArgs.disableAll)
                 {
-                    Disable();
+                    toDisable = new string[mods.Count];
+                    for (int i = 0; i < mods.Count; i++)
+                    {
+                        toDisable[i] = mods[i].name;
+                    }
+                }
+                else
+                {
+                    toDisable = parsedArgs.toDisable;
+                }
+                #endregion
+
+                if (toDisable.Length != 0)
+                {
+                    Disable(toDisable);
                 }
                 if (parsedArgs.toEnable.Length != 0)
                 {
@@ -208,41 +208,16 @@ namespace FactorioModTool
             {
                 Console.WriteLine($"Enabling {mod_enable}...");
 
-                for(int i=0;i<mods.Count;i++)
-                {
-                    if (mods[i].Equals(mod_enable))
-                        mods[i].enabled = true;
-                }
+                ChangeModEnabledState(mod_enable, true);
             }
         }
-        static void Disable()
+        static void Disable(string[] toDisable)
         {
-            string[] toDisable;
-
-            #region ugly
-            if (parsedArgs.disableAll)
-            {
-                toDisable = new string[mods.Count];
-                for (int i = 0; i < mods.Count; i++) 
-                {
-                    toDisable[i] = mods[i].name;
-                }
-            }
-            else
-            {
-                toDisable = parsedArgs.toDisable;
-            }
-            #endregion
-
             foreach (string mod_disable in toDisable)
             {
                 Console.WriteLine($"Disabling {mod_disable}...");
 
-                for (int i = 0; i < mods.Count; i++)
-                {
-                    if (mods[i].Equals(mod_disable))
-                        mods[i].enabled = false;
-                }
+                ChangeModEnabledState(mod_disable, false);
             }
         }
         static void Download()
@@ -285,6 +260,17 @@ namespace FactorioModTool
 			reFetch = true;
         }
 
+        static void ChangeModEnabledState(string mod, bool newState)
+        {
+            for (int i = 0; i < mods.Count; i++)
+            {
+                if (mods[i].name == mod)
+                {
+                    mods[i].enabled = newState;
+                    break;
+                }
+            }
+        }
         static bool DownloadMod(string mod_download, WebClient wc)
         {
             Console.WriteLine($"Downloading mod {mod_download}...");
@@ -361,7 +347,7 @@ namespace FactorioModTool
         }
         static void RemoveMod(Mod mod_remove)
         {
-            Console.WriteLine($"Removing mod {(string)mod_remove}...");
+            Console.WriteLine($"Removing mod {mod_remove.name}...");
             File.Delete(mod_remove.zipName);
         }
 
@@ -475,8 +461,10 @@ namespace FactorioModTool
                             break;
                         case "--ignore-error": // TODO: fix this uglyness
 							n++;
+                            n_args--;
                             break;
                         case "--crybaby":
+                            n_args--;
                             break;
                         default:
                             ConsoleHelper.ThrowError(ErrorType.WrongOption, args[n]);
@@ -593,11 +581,11 @@ namespace FactorioModTool
                     if(entry.Name == "info.json")
                     {
                         JsonDocument info = JsonDocument.Parse(entry.Open());
-                        Mod mod_name;
-                        mod_name = (Mod)info.RootElement.GetProperty("name").GetString();
-                        mod_name.zipName = modPath;
+                        Mod mod;
+                        mod = (Mod)info.RootElement.GetProperty("name").GetString();
+                        mod.zipName = modPath;
 
-                        mods.Add(mod_name);
+                        mods.Add(mod);
 
                         n_fetched_ids++;
 
