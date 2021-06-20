@@ -474,6 +474,7 @@ namespace FactorioModTool
                             _parsedArgs.getMods = true;
                             break;
                         case "--ignore-error": // TODO: fix this uglyness
+							n++;
                             break;
                         case "--crybaby":
                             break;
