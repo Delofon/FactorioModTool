@@ -65,11 +65,106 @@ namespace FactorioModTool
             this.token = token;
         }
     }
+    // Contains info about the mod version.
+    struct SemVer
+    {
+        public static SemVer Null
+        {
+            get
+            {
+                return new SemVer() { major = 0, minor = 0, patch = 0 };
+            }
+        }
+        public static SemVer Initial
+        {
+            get
+            {
+                return new SemVer() { major = 0, minor = 1, patch = 0 };
+            }
+        }
+
+        public int major, minor, patch;
+
+        public static implicit operator SemVer(string version)
+        {
+            string[] strs = version.Split('.');
+
+            try
+            {
+                int[] ints = new int[3];
+
+                for(int i = 0; i < 3; i++)
+                {
+                    ints[i] = Int32.Parse(strs[i]);
+                }
+
+                return new SemVer() { major = ints[0], minor = ints[1], patch = ints[2] };
+            }
+            catch
+            {
+                return Null;
+            }
+        }
+
+        public static bool operator ==(SemVer left, SemVer right)
+        {
+            if (left.major == right.major && left.minor == right.minor && left.patch == right.patch) return true;
+            return false;
+        }
+        public static bool operator !=(SemVer left, SemVer right)
+        {
+            return !(left == right);
+        }
+        public static bool operator >(SemVer left, SemVer right)
+        {
+            if (left.major > right.major) return true;
+            if (left.major < right.major) return false;
+
+            if (left.minor > right.minor) return true;
+            if (left.minor < right.minor) return false;
+
+            if (left.patch > right.patch) return true;
+            if (left.patch < right.patch) return false;
+
+            return false;
+        }
+        public static bool operator <(SemVer left, SemVer right)
+        {
+            return !(left > right) ^ (left == right);
+        }
+        public static bool operator >=(SemVer left, SemVer right)
+        {
+            return !(left < right);
+        }
+        public static bool operator <=(SemVer left, SemVer right)
+        {
+            return !(left > right);
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (obj == null) return false;
+            SemVer? ver = obj as SemVer?;
+            if (ver.HasValue != true) return false;
+            else return Equals(ver.Value);
+        }
+        public bool Equals(SemVer ver)
+        {
+            return this == ver;
+        }
+
+        public override int GetHashCode()
+        {
+            return major.GetHashCode() << 22 | minor.GetHashCode() << 12 | patch.GetHashCode();
+        }
+    }
     // Contains info about the mod.
     class Mod
     {
         public string name { get; set; }
         public bool enabled { get; set; }
+
+        public SemVer version;
 
         public string zipName;
 
