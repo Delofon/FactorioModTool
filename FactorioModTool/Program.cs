@@ -210,8 +210,8 @@ namespace FactorioModTool
         static Settings settings;
         static ArgsContainer parsedArgs;
         static ServiceCrdntls crdntls;
-		
-		static bool reFetch = false;
+        
+        static bool reFetch = false;
 
         static void Main(string[] args)
         {
@@ -250,9 +250,9 @@ namespace FactorioModTool
                     crdntls = GetCrdntls();
                     Download();
                 }
-				
-				if(reFetch)
-					mods = FetchMods(settings);
+                
+                if(reFetch)
+                    mods = FetchMods(settings);
 
                 string[] toDisable;
 
@@ -290,8 +290,6 @@ namespace FactorioModTool
                 ModLister.WriteModList(settings.modsPath, mods);
 
                 Console.WriteLine($"Done with {EndStats.errorsRecorded} errors.");
-                //Console.WriteLine(mods.Contains("bobores"));
-                //parsedArgs.toDownload.ToList().ForEach(x => Console.WriteLine(x));
                 //if (EndStats.errorsRecorded != 0) Console.Write("Error codes: "); EndStats.errorCodes.ToList().ForEach(x => Console.Write($"{x} ")); Console.Write('\n');
             }
         }
@@ -330,8 +328,8 @@ namespace FactorioModTool
                     DownloadMod(modid, wc);
                 }
             }
-			
-			reFetch = true;
+            
+            reFetch = true;
         }
         static void Remove()
         {
@@ -351,8 +349,8 @@ namespace FactorioModTool
 
                 RemoveMod(mod);
             }
-			
-			reFetch = true;
+            
+            reFetch = true;
         }
 
         static void ChangeModEnabledState(string mod, bool newState)
@@ -555,7 +553,7 @@ namespace FactorioModTool
                             _parsedArgs.getMods = true;
                             break;
                         case "--ignore-error": // TODO: fix this uglyness
-							n++;
+                            n++;
                             n_args--;
                             break;
                         case "--crybaby":
@@ -678,6 +676,8 @@ namespace FactorioModTool
                         JsonDocument info = JsonDocument.Parse(entry.Open());
                         Mod mod;
                         mod = (Mod)info.RootElement.GetProperty("name").GetString();
+                        // Mod enabled state is set later at the end of this method
+                        mod.version = info.RootElement.GetProperty("version").GetString();
                         mod.zipName = modPath;
 
                         mods.Add(mod);
