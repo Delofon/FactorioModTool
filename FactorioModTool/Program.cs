@@ -612,17 +612,25 @@ namespace FactorioModTool
 
             string GetExePath()
             {
-                Console.WriteLine("Please, specify Factorio executable path (path to factorio.exe, ends with Factorio/bin/x64/factorio.exe)");
+                Console.WriteLine("Please, specify Factorio executable path (path to factorio.exe, ends with Factorio/bin/x64/factorio.exe on Windows, with Factorio/bin/x64/factorio on UNIX)");
 
                 string _exePath = Console.ReadLine();
 
-                if (!File.Exists(_exePath) || Path.GetFileName(_exePath) != "factorio.exe")
+                if (File.Exists(_exePath))
                 {
-                    ConsoleHelper.ThrowError(ErrorType.WrongPath, _exePath, "factorio.exe");
-                    return "";
+                    string filename = Path.GetFileName(_exePath);
+                    if(filename == "factorio.exe")
+                    {
+                        return _exePath.Substring(0, _exePath.Length - "factorio.exe".Length);
+                    }
+                    else if(filename == "factorio")
+                    {
+                        return _exePath.Substring(0, _exePath.Length - "factorio".Length);
+                    }
                 }
 
-                return _exePath;
+                ConsoleHelper.ThrowError(ErrorType.WrongPath, _exePath, "factorio.exe or factorio");
+                return "";
             }
             string GetReadWritePath()
             {
